@@ -21,6 +21,7 @@ REGION = os.getenv("REGION", "")
 GCS_LOCATION = os.getenv("GCS_LOCATION", "")
 
 ARTIFACT_STORE_URI = os.path.join(GCS_LOCATION, "tfx_artifacts")
+
 MODEL_REGISTRY_URI = os.getenv(
     "MODEL_REGISTRY_URI",
     os.path.join(GCS_LOCATION, "model_registry"),
@@ -48,6 +49,7 @@ TFX_IMAGE_URI = os.getenv(
     "TFX_IMAGE_URI", f"gcr.io/{PROJECT}/tfx-{DATASET_DISPLAY_NAME}:latest"
 )
 
+#BEAM_RUNNER = os.getenv("BEAM_RUNNER", "DirectRunner")
 BEAM_RUNNER = os.getenv("BEAM_RUNNER", "DirectRunner")
 BEAM_DIRECT_PIPELINE_ARGS = [
     f"--project={PROJECT}",
@@ -60,7 +62,7 @@ BEAM_DATAFLOW_PIPELINE_ARGS = [
     f"--runner={BEAM_RUNNER}",
 ]
 
-TRAINING_RUNNER = os.getenv("TRAINING_RUNNER", "local")
+TRAINING_RUNNER = os.getenv("TRAINING_RUNNER", "vertex")
 VERTEX_TRAINING_ARGS = {
     'project': PROJECT,
     'worker_pool_specs': [{
@@ -82,14 +84,35 @@ VERTEX_TRAINING_CONFIG = {
     'use_gpu': False,
 }
 
-SERVING_RUNTIME = os.getenv("SERVING_RUNTIME", "tf2-cpu.2-5")
+SERVING_RUNTIME = os.getenv("SERVING_RUNTIME", "tf2-cpu.2-12")
 SERVING_IMAGE_URI = f"us-docker.pkg.dev/vertex-ai/prediction/{SERVING_RUNTIME}:latest"
+
+VERTEX_SERVING_SPEC = {
+      'project': PROJECT,
+      'worker_pool_specs': [{
+          'machine_spec': {
+              'machine_type': 'n1-standard-4',
+          },
+          'replica_count': 1,
+          'container_spec': {
+              'image_uri': 'gcr.io/tfx-oss-public/tfx:{}'.format(tfx.__version__),
+          },
+      }],
+  }
+
+VERTEX_PREDICTION_CONFIG ={
+    tfx.extensions.google_cloud_ai_platform.ENABLE_VERTEX_KEY: True,
+    tfx.extensions.google_cloud_ai_platform.VERTEX_REGION_KEY: REGION,
+    tfx.extensions.google_cloud_ai_platform.VERTEX_CONTAINER_IMAGE_URI_KEY: SERVING_IMAGE_URI,
+    tfx.extensions.google_cloud_ai_platform.SERVING_ARGS_KEY: VERTEX_SERVING_SPEC,
+}
+
 
 BATCH_PREDICTION_BQ_DATASET_NAME = os.getenv(
     "BATCH_PREDICTION_BQ_DATASET_NAME", "playground_us"
 )
 BATCH_PREDICTION_BQ_TABLE_NAME = os.getenv(
-    "BATCH_PREDICTION_BQ_TABLE_NAME", "chicago_taxitrips_prep"
+    "BATCH_PREDICTION_BQ_TABLE_NAME", "chicago_taxitrips_final"
 )
 BATCH_PREDICTION_BEAM_ARGS = {
     "runner": f"{BEAM_RUNNER}",

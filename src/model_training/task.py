@@ -97,7 +97,9 @@ def main():
         if not run_id:
             run_id = f"run-gcp-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-        vertex_ai.start_run(run_id)
+            vertex_ai.start_run(run_id)
+        else:
+            vertex_ai.start_run(run_id, resume=True)
         logging.info(f"Run {run_id} started.")
 
         vertex_ai.log_params(hyperparams)

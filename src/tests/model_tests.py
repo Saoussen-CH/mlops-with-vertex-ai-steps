@@ -17,8 +17,8 @@ import sys
 import logging
 import tensorflow as tf
 
-from src.common import features
-from src.model_training import model, defaults
+
+from src.tfx_model_training import model, defaults, features
 
 root = logging.getLogger()
 root.setLevel(logging.INFO)
@@ -27,7 +27,6 @@ handler.setLevel(logging.INFO)
 root.addHandler(handler)
 
 EXPECTED_HYPERPARAMS_KEYS = [
-    "hidden_units",
     "learning_rate",
     "batch_size",
     "num_epochs",
@@ -35,7 +34,7 @@ EXPECTED_HYPERPARAMS_KEYS = [
 
 
 def test_hyperparams_defaults():
-    hyperparams = {"hidden_units": [64, 32]}
+    hyperparams = {}
 
     hyperparams = defaults.update_hyperparams(hyperparams)
     assert set(hyperparams.keys()) == set(EXPECTED_HYPERPARAMS_KEYS)

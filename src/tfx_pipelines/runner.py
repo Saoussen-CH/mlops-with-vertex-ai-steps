@@ -48,11 +48,7 @@ def compile_training_pipeline(pipeline_definition_file):
             default=defaults.LEARNING_RATE,
             ptype=float,
         ),
-        hidden_units=data_types.RuntimeParameter(
-            name="hidden_units",
-            default=",".join(str(u) for u in defaults.HIDDEN_UNITS),
-            ptype=str,
-        ),
+
     )
 
     runner = kubeflow_v2_dag_runner.KubeflowV2DagRunner(

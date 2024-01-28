@@ -54,7 +54,7 @@ def hyperparameters_gen(
     num_epochs: Parameter[int],
     batch_size: Parameter[int],
     learning_rate: Parameter[float],
-    hidden_units: Parameter[str],
+    #hidden_units: Parameter[str],
     hyperparameters: OutputArtifact[HyperParameters],
 ):
 
@@ -62,7 +62,7 @@ def hyperparameters_gen(
     hp_dict["num_epochs"] = num_epochs
     hp_dict["batch_size"] = batch_size
     hp_dict["learning_rate"] = learning_rate
-    hp_dict["hidden_units"] = [int(units) for units in hidden_units.split(",")]
+    #hp_dict["hidden_units"] = [int(units) for units in hidden_units.split(",")]
     logging.info(f"Hyperparameters: {hp_dict}")
 
     hyperparams_uri = os.path.join(

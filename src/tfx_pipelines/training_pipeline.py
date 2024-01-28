@@ -13,61 +13,75 @@
 # limitations under the License.
 """TFX training pipeline definition."""
 
-import os
+
 import sys
-import logging
+import os
 import json
-
+import numpy as np
+from tfx import v1 as tfx
+import tensorflow as tf
+import tensorflow_transform as tft
+import tensorflow_data_validation as tfdv
 import tensorflow_model_analysis as tfma
+from tensorflow_transform.tf_metadata import schema_utils
+import logging
 
-from ml_metadata.proto import metadata_store_pb2
+from google.cloud import aiplatform
+
+from src.common import features
+from src.model_training import data
+from src.tfx_pipelines import components
+
 from tfx.proto import example_gen_pb2, transform_pb2, pusher_pb2
-from tfx.types import Channel, standard_artifacts
-from tfx.orchestration import pipeline, data_types
-from tfx.dsl.components.common.importer import Importer
-from tfx.dsl.components.common.resolver import Resolver
-from tfx.dsl.experimental import latest_artifacts_resolver
-from tfx.dsl.experimental import latest_blessed_model_resolver
-from tfx.v1.extensions.google_cloud_big_query import BigQueryExampleGen
-from tfx.v1.extensions.google_cloud_ai_platform import Trainer as VertexTrainer 
+
+from tfx.v1.types.standard_artifacts import Model, ModelBlessing, Schema
+from tfx.v1.dsl import Pipeline, Importer, Resolver, Channel
+from tfx.v1.dsl.experimental import LatestBlessedModelStrategy, LatestArtifactStrategy
+
 from tfx.v1.components import (
     StatisticsGen,
+    SchemaGen,
+    ImportSchemaGen,
     ExampleValidator,
     Transform,
-    Trainer,
     Evaluator,
     Pusher,
 )
+
+logging.getLogger().setLevel(logging.ERROR)
+tf.get_logger().setLevel('ERROR')
+
+print("TFX Version:", tfx.__version__)
+print("Tensorflow Version:", tf.__version__)
 
 SCRIPT_DIR = os.path.dirname(
     os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__)))
 )
 sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, "..")))
 
+from tfx.v1.extensions.google_cloud_ai_platform import Trainer as VertexTrainer 
+from tfx.v1.extensions.google_cloud_ai_platform import Pusher as VertexPrediction 
+from tfx.orchestration import pipeline, data_types
 from src.tfx_pipelines import config
-from src.tfx_pipelines import components as custom_components
 from src.common import features, datasource_utils
+from src.tfx_pipelines import components 
 
-RAW_SCHEMA_DIR = "src/raw_schema"
+RAW_SCHEMA_DIR = "src/tfx_model_training/raw_schema"
 TRANSFORM_MODULE_FILE = "src/preprocessing/transformations.py"
-TRAIN_MODULE_FILE = "src/model_training/runner.py"
+TRAIN_MODULE_FILE = "src/tfx_model_training/model_runner.py"
 
-
-def create_pipeline(
+def _create_pipeline(
     pipeline_root: str,
     num_epochs: data_types.RuntimeParameter,
     batch_size: data_types.RuntimeParameter,
     learning_rate: data_types.RuntimeParameter,
-    hidden_units: data_types.RuntimeParameter,
-    metadata_connection_config: metadata_store_pb2.ConnectionConfig = None,
-):
+)-> tfx.dsl.Pipeline:
 
     # Hyperparameter generation.
-    hyperparams_gen = custom_components.hyperparameters_gen(
+    hyperparams_gen = components.hyperparameters_gen(
         num_epochs=num_epochs,
         batch_size=batch_size,
         learning_rate=learning_rate,
-        hidden_units=hidden_units,
     ).with_id("HyperparamsGen")
 
     # Get train source query.
@@ -92,10 +106,12 @@ def create_pipeline(
         )
     )
 
-    # Train example generation.
-    train_example_gen = BigQueryExampleGen(
+    # Train example generation
+    
+    train_example_gen = tfx.extensions.google_cloud_big_query.BigQueryExampleGen(
         query=train_sql_query,
         output_config=train_output_config,
+        custom_config=json.dumps({})
     ).with_id("TrainDataGen")
 
     # Get test source query.
@@ -116,16 +132,18 @@ def create_pipeline(
     )
 
     # Test example generation.
-    test_example_gen = BigQueryExampleGen(
+    test_example_gen = tfx.extensions.google_cloud_big_query.BigQueryExampleGen(
         query=test_sql_query,
         output_config=test_output_config,
+        custom_config=json.dumps({})
     ).with_id("TestDataGen")
 
     # Schema importer.
     schema_importer = Importer(
         source_uri=RAW_SCHEMA_DIR,
-        artifact_type=standard_artifacts.Schema,
+        artifact_type=Schema,
     ).with_id("SchemaImporter")
+
 
     # Statistics generation.
     statistics_gen = StatisticsGen(examples=train_example_gen.outputs["examples"]).with_id(
@@ -155,37 +173,44 @@ def create_pipeline(
 
     # Get the latest model to warmstart
     warmstart_model_resolver = Resolver(
-        strategy_class=latest_artifacts_resolver.LatestArtifactsResolver,
-        latest_model=Channel(type=standard_artifacts.Model),
-    ).with_id("WarmstartModelResolver")
-
-    # Model training.
-    trainer = Trainer(
-        module_file=TRAIN_MODULE_FILE,
-        examples=transform.outputs["transformed_examples"],
-        schema=schema_importer.outputs["result"],
-        base_model=warmstart_model_resolver.outputs["latest_model"],
-        transform_graph=transform.outputs["transform_graph"],
-        hyperparameters=hyperparams_gen.outputs["hyperparameters"],
-    ).with_id("ModelTrainer")
+        strategy_class=LatestArtifactStrategy,
+        model=Channel(type=Model),
+        ).with_id("WarmstartModelResolver")
     
+    # Add the ImportSchemaGen so that it will add it to the GCS bucket
+    schema_gen = ImportSchemaGen(schema_file='src/tfx_model_training/raw_schema/schema.pbtxt')
+    
+    # Model training.
     if config.TRAINING_RUNNER == "vertex":
         trainer = VertexTrainer(
             module_file=TRAIN_MODULE_FILE,
             examples=transform.outputs["transformed_examples"],
-            schema=schema_importer.outputs["result"],
-            base_model=warmstart_model_resolver.outputs["latest_model"],
+            schema=schema_gen.outputs['schema'],
+            base_model=warmstart_model_resolver.outputs["model"],
             transform_graph=transform.outputs["transform_graph"],
+            train_args=tfx.proto.TrainArgs(num_steps=10),
+            eval_args=tfx.proto.EvalArgs(num_steps=5),
             hyperparameters=hyperparams_gen.outputs["hyperparameters"],
             custom_config=config.VERTEX_TRAINING_CONFIG
+        ).with_id("ModelTrainer")
+    else :
+        trainer = Trainer(
+            module_file=TRAIN_MODULE_FILE,
+            examples=transform.outputs["transformed_examples"],
+            schema=schema_importer.outputs["result"],
+            base_model=warmstart_model_resolver.outputs["model"],
+            train_args=tfx.proto.TrainArgs(num_steps=10),
+            eval_args=tfx.proto.EvalArgs(num_steps=5),
+            transform_graph=transform.outputs["transform_graph"],
+            hyperparameters=hyperparams_gen.outputs["hyperparameters"],
         ).with_id("ModelTrainer")
         
 
     # Get the latest blessed model (baseline) for model validation.
     baseline_model_resolver = Resolver(
-        strategy_class=latest_blessed_model_resolver.LatestBlessedModelResolver,
-        model=Channel(type=standard_artifacts.Model),
-        model_blessing=Channel(type=standard_artifacts.ModelBlessing),
+        strategy_class=LatestBlessedModelStrategy,
+        model=Channel(type=Model),
+        model_blessing=Channel(type=ModelBlessing)
     ).with_id("BaselineModelResolver")
 
     # Prepare evaluation config.
@@ -230,8 +255,9 @@ def create_pipeline(
         model=trainer.outputs["model"],
         baseline_model=baseline_model_resolver.outputs["model"],
         eval_config=eval_config,
-        schema=schema_importer.outputs["result"],
+        schema=schema_gen.outputs['schema'],
     ).with_id("ModelEvaluator")
+
 
     exported_model_location = os.path.join(
         config.MODEL_REGISTRY_URI, config.MODEL_DISPLAY_NAME
@@ -243,11 +269,11 @@ def create_pipeline(
     )
 
     # Push custom model to model registry.
-    pusher = Pusher(
-        model=trainer.outputs["model"],
-        model_blessing=evaluator.outputs["blessing"],
-        push_destination=push_destination,
-    ).with_id("ModelPusher")
+    #pusher = Pusher(
+    #    model=trainer.outputs["model"],
+    #    model_blessing=evaluator.outputs["blessing"],
+    #    push_destination=push_destination,
+    #).with_id("ModelPusher")
     
     # Upload custom trained model to Vertex AI.
     labels = {
@@ -256,19 +282,25 @@ def create_pipeline(
         "pipeline_root": pipeline_root
     }
     labels = json.dumps(labels)
-    explanation_config = json.dumps(features.generate_explanation_config())
     
-    vertex_model_uploader = custom_components.vertex_model_uploader(
-        project=config.PROJECT,
-        region=config.REGION,
-        model_display_name=config.MODEL_DISPLAY_NAME,
-        pushed_model_location=exported_model_location,
-        serving_image_uri=config.SERVING_IMAGE_URI,
-        model_blessing=evaluator.outputs["blessing"],
-        explanation_config=explanation_config,
-        labels=labels
-    ).with_id("VertexUploader")
+    #explanation_config = json.dumps(features.generate_explanation_config())
+    
+    #vertex_model_uploader = custom_components.vertex_model_uploader(
+    #   project=config.PROJECT,
+    #    region=config.REGION,
+    #    model_display_name=config.MODEL_DISPLAY_NAME,
+    #    pushed_model_location=exported_model_location,
+    #    serving_image_uri=config.SERVING_IMAGE_URI,
+    #    model_blessing=evaluator.outputs["blessing"],
+    #    explanation_config=explanation_config,
+    #    labels=labels
+    #).with_id("VertexUploader")
 
+    pusher = VertexPrediction(
+        model=trainer.outputs['model'],
+        model_blessing = evaluator.outputs['blessing'],
+        custom_config=config.VERTEX_PREDICTION_CONFIG)
+   
     pipeline_components = [
         hyperparams_gen,
         train_example_gen,
@@ -278,16 +310,17 @@ def create_pipeline(
         example_validator,
         transform,
         warmstart_model_resolver,
+        schema_gen,
         trainer,
         baseline_model_resolver,
         evaluator,
         pusher,
     ]
 
-    if int(config.UPLOAD_MODEL):
-        pipeline_components.append(vertex_model_uploader)
-        # Add dependency from pusher to aip_model_uploader.
-        vertex_model_uploader.add_upstream_node(pusher)
+    #if int(config.UPLOAD_MODEL):
+    #    pipeline_components.append(vertex_model_uploader)
+    #    # Add dependency from pusher to aip_model_uploader.
+    #    vertex_model_uploader.add_upstream_node(pusher)
 
     logging.info(
         f"Pipeline components: {[component.id for component in pipeline_components]}"
@@ -299,11 +332,9 @@ def create_pipeline(
 
     logging.info(f"Beam pipeline args: {beam_pipeline_args}")
 
-    return pipeline.Pipeline(
+    return tfx.dsl.Pipeline(
         pipeline_name=config.PIPELINE_NAME,
         pipeline_root=pipeline_root,
         components=pipeline_components,
         beam_pipeline_args=beam_pipeline_args,
-        metadata_connection_config=metadata_connection_config,
-        enable_cache=int(config.ENABLE_CACHE),
     )

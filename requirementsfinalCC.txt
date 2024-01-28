@@ -1,16 +1,10 @@
-<<<<<<< HEAD
-kfp==1.8.1
-google-cloud-bigquery==2.26.0
-google-cloud-bigquery-storage==2.7.0
-google-cloud-aiplatform==1.4.2
-cloudml-hypertune==0.1.0.dev6
-=======
 apache-beam==2.50.0 
+anyio==4.2.0
 attrs==21.4.0 
 google-api-python-client==1.12.11 
 google-apitools==0.5.31 
 google-cloud-aiplatform==1.34.0 
-google-cloud-bigquery==2.34.4
+google-cloud-bigquery==2.34.4 
 google-cloud-bigtable==2.21.0 
 google-cloud-dlp==3.12.3 
 google-cloud-pubsub==2.18.4 
@@ -32,7 +26,7 @@ kt-legacy==1.0.5
 kubernetes==12.0.1 
 ml-metadata==1.14.0 
 ml-pipelines-sdk==1.14.0 
-pyarrow==10.0.1
+pyarrow==10.0.1 
 tensorflow==2.13.1 
 tensorflow-data-validation==1.14.0 
 tensorflow-hub==0.13.0 
@@ -41,5 +35,8 @@ tensorflow-serving-api==2.13.1
 tensorflow-transform==1.14.0 
 tfx==1.14.0 
 tfx-bsl==1.14.0
->>>>>>> 811e3c7 (update code to work with tfx 1.14)
-pytest
+tinycss2==1.2.1
+fastjsonschema==2.19.1
+cffi==1.16.0
+defusedxml==0.7.1
+jsonschema==4.17.3
