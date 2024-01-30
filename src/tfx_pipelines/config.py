@@ -28,10 +28,18 @@ MODEL_REGISTRY_URI = os.getenv(
     os.path.join(GCS_LOCATION, "model_registry"),
 )
 
+PIPELINE_ROOT = os.path.join(
+        ARTIFACT_STORE_URI,
+        PIPELINE_NAME,
+    )
+PIPELINE_DEFINITION_FILE = f'{PIPELINE_NAME}' + 'info_pipeline.json'
+
 DATASET_DISPLAY_NAME = os.getenv("DATASET_DISPLAY_NAME", "chicago-taxi-tips")
+
 MODEL_DISPLAY_NAME = os.getenv(
     "MODEL_DISPLAY_NAME", f"{DATASET_DISPLAY_NAME}-classifier"
 )
+
 PIPELINE_NAME = os.getenv("PIPELINE_NAME", f"{MODEL_DISPLAY_NAME}-train-pipeline")
 
 ML_USE_COLUMN = "ml_use"
