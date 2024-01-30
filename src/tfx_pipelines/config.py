@@ -15,6 +15,7 @@
 
 import os
 from tfx import v1 as tfx
+from src.tfx_model_training import features
 
 PROJECT = os.getenv("PROJECT", "")
 REGION = os.getenv("REGION", "")
@@ -46,8 +47,10 @@ ACCURACY_THRESHOLD = os.getenv("ACCURACY_THRESHOLD", "0.8")
 USE_KFP_SA = os.getenv("USE_KFP_SA", "False")
 
 TFX_IMAGE_URI = os.getenv(
-    "TFX_IMAGE_URI", f"gcr.io/{PROJECT}/tfx-{DATASET_DISPLAY_NAME}:latest"
+    "TFX_IMAGE_URI", ""
+    #f"gcr.io/{PROJECT}/tfx-{DATASET_DISPLAY_NAME}:latest"
 )
+
 
 #BEAM_RUNNER = os.getenv("BEAM_RUNNER", "DirectRunner")
 BEAM_RUNNER = os.getenv("BEAM_RUNNER", "DirectRunner")
@@ -58,11 +61,16 @@ BEAM_DIRECT_PIPELINE_ARGS = [
 BEAM_DATAFLOW_PIPELINE_ARGS = [
     f"--project={PROJECT}",
     f"--temp_location={os.path.join(GCS_LOCATION, 'temp')}",
-    f"--region={REGION}",
+    f"--region=us-east1",
     f"--runner={BEAM_RUNNER}",
+    "--disk_size_gb=50",
+    "--experiments=disable_worker_container_image_prepull",
+    #"--machine_type=e1-standard-8",
+    f"--sdk_container_image={TFX_IMAGE_URI}",
 ]
 
 TRAINING_RUNNER = os.getenv("TRAINING_RUNNER", "vertex")
+
 VERTEX_TRAINING_ARGS = {
     'project': PROJECT,
     'worker_pool_specs': [{
@@ -87,8 +95,13 @@ VERTEX_TRAINING_CONFIG = {
 SERVING_RUNTIME = os.getenv("SERVING_RUNTIME", "tf2-cpu.2-12")
 SERVING_IMAGE_URI = f"us-docker.pkg.dev/vertex-ai/prediction/{SERVING_RUNTIME}:latest"
 
-VERTEX_SERVING_SPEC = {
+ENDPOINT_NAME = 'predict-explain-for-' + PIPELINE_NAME
+
+explanation_metadata = features.generate_explanation_config()
+
+VERTEX_SERVING_SPEC_PUSHER = {
       'project': PROJECT,
+      #'endpoint_name': ENDPOINT_NAME,
       'worker_pool_specs': [{
           'machine_spec': {
               'machine_type': 'n1-standard-4',
@@ -98,13 +111,31 @@ VERTEX_SERVING_SPEC = {
               'image_uri': 'gcr.io/tfx-oss-public/tfx:{}'.format(tfx.__version__),
           },
       }],
+      'explanation_metadata': explanation_metadata,
+      'explanation_parameters' : {
+              "sampled_shapley_attribution": {
+                  "path_count": 10
+              }  
+      },
+  }
+
+VERTEX_PREDICTION_SPEC = {
+      'project': PROJECT,
+      'endpoint_name': ENDPOINT_NAME,
+      'machine_type': 'n1-standard-4',
+      'explanation_metadata': explanation_metadata,
+      'explanation_parameters' : {
+              "sampled_shapley_attribution": {
+                  "path_count": 10
+              }  
+      },
   }
 
 VERTEX_PREDICTION_CONFIG ={
     tfx.extensions.google_cloud_ai_platform.ENABLE_VERTEX_KEY: True,
     tfx.extensions.google_cloud_ai_platform.VERTEX_REGION_KEY: REGION,
     tfx.extensions.google_cloud_ai_platform.VERTEX_CONTAINER_IMAGE_URI_KEY: SERVING_IMAGE_URI,
-    tfx.extensions.google_cloud_ai_platform.SERVING_ARGS_KEY: VERTEX_SERVING_SPEC,
+    tfx.extensions.google_cloud_ai_platform.SERVING_ARGS_KEY: VERTEX_PREDICTION_SPEC,
 }
 
 

@@ -1,6 +1,8 @@
 FROM gcr.io/tfx-oss-public/tfx:1.14.0
 
-COPY requirementsfinal.txt requirements.txt
+ENV RUN_PYTHON_SDK_IN_DEFAULT_ENVIRONMENT=1
+
+COPY requirements.txt requirements.txt
 
 
 # Download and install Python 3.10.2
@@ -11,6 +13,7 @@ COPY requirementsfinal.txt requirements.txt
 #    make altinstall
 RUN sed -i 's/python3/python/g' /usr/bin/pip
 RUN pip install -r requirements.txt
+
 
 COPY src/ src/
 
