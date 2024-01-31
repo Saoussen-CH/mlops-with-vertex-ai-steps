@@ -179,3 +179,4 @@ werkzeug==3.0.1
 widgetsnbextension==3.6.6
 wrapt==1.16.0 
 zstandard==0.22.0
+pytest

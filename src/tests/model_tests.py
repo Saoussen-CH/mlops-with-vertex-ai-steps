@@ -17,8 +17,8 @@ import sys
 import logging
 import tensorflow as tf
 
-
 from src.tfx_model_training import model, defaults, features
+
 
 root = logging.getLogger()
 root.setLevel(logging.INFO)

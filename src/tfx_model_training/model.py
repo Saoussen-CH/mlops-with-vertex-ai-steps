@@ -17,9 +17,9 @@ import tensorflow as tf
 from tensorflow import keras
 import logging
 
-#from src.tfx_model_training import features
+from src.tfx_model_training import features
 
-import features
+#import features
 
 def create_model_inputs():
     inputs = {}

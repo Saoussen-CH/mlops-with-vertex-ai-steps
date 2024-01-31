@@ -4,13 +4,6 @@ ENV RUN_PYTHON_SDK_IN_DEFAULT_ENVIRONMENT=1
 
 COPY requirements.txt requirements.txt
 
-
-# Download and install Python 3.10.2
-#RUN wget https://www.python.org/ftp/python/3.10.2/Python-3.10.2.tgz && \
-#    tar -xzf Python-3.10.2.tgz && \
-#    cd Python-3.10.2 && \
-#    ./configure --enable-optimizations && \
-#    make altinstall
 RUN sed -i 's/python3/python/g' /usr/bin/pip
 RUN pip install -r requirements.txt
 

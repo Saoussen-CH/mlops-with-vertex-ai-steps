@@ -28,19 +28,25 @@ MODEL_REGISTRY_URI = os.getenv(
     os.path.join(GCS_LOCATION, "model_registry"),
 )
 
-PIPELINE_ROOT = os.path.join(
-        ARTIFACT_STORE_URI,
-        PIPELINE_NAME,
-    )
-PIPELINE_DEFINITION_FILE = f'{PIPELINE_NAME}' + 'info_pipeline.json'
-
 DATASET_DISPLAY_NAME = os.getenv("DATASET_DISPLAY_NAME", "chicago-taxi-tips")
-
 MODEL_DISPLAY_NAME = os.getenv(
     "MODEL_DISPLAY_NAME", f"{DATASET_DISPLAY_NAME}-classifier"
 )
 
 PIPELINE_NAME = os.getenv("PIPELINE_NAME", f"{MODEL_DISPLAY_NAME}-train-pipeline")
+
+PIPELINE_ROOT = os.path.join(
+        ARTIFACT_STORE_URI,
+        PIPELINE_NAME,
+    )
+
+PIPELINE_DEFINITION_FILE = f'{PIPELINE_NAME}' + 'info_pipeline.json'
+
+
+
+
+
+
 
 ML_USE_COLUMN = "ml_use"
 EXCLUDE_COLUMNS = ",".join(["trip_start_timestamp"])
@@ -103,7 +109,7 @@ VERTEX_TRAINING_CONFIG = {
 SERVING_RUNTIME = os.getenv("SERVING_RUNTIME", "tf2-cpu.2-12")
 SERVING_IMAGE_URI = f"us-docker.pkg.dev/vertex-ai/prediction/{SERVING_RUNTIME}:latest"
 
-ENDPOINT_NAME = 'predict-explain-for-' + PIPELINE_NAME
+ENDPOINT_NAME = os.getenv("ENDPOINT_NAME", 'predict-explain-for-' + PIPELINE_NAME) 
 
 explanation_metadata = features.generate_explanation_config()
 
@@ -130,6 +136,7 @@ VERTEX_SERVING_SPEC_PUSHER = {
 VERTEX_PREDICTION_SPEC = {
       'project': PROJECT,
       'endpoint_name': ENDPOINT_NAME,
+      'deployed_model_display_name' : MODEL_DISPLAY_NAME,
       'machine_type': 'n1-standard-4',
       'explanation_metadata': explanation_metadata,
       'explanation_parameters' : {

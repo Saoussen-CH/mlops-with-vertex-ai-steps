@@ -58,13 +58,51 @@ SCRIPT_DIR = os.path.dirname(
     os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__)))
 )
 sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, "..")))
+ 
+import os
+import json
+import numpy as np
+from tfx import v1 as tfx
+import tensorflow as tf
+import tensorflow_transform as tft
+import tensorflow_data_validation as tfdv
+import tensorflow_model_analysis as tfma
+from tensorflow_transform.tf_metadata import schema_utils
+import logging
+import sys
+from google.cloud import aiplatform
+
+
+from src.model_training import data
+
+
+from tfx.proto import example_gen_pb2, transform_pb2, pusher_pb2
+
+from tfx.v1.types.standard_artifacts import Model, ModelBlessing, Schema
+from tfx.v1.dsl import Pipeline, Importer, Resolver, Channel
+from tfx.v1.dsl.experimental import LatestBlessedModelStrategy, LatestArtifactStrategy
+
+from tfx.v1.components import (
+    StatisticsGen,
+    SchemaGen,
+    ImportSchemaGen,
+    ExampleValidator,
+    Trainer,
+    Transform,
+    Evaluator,
+    Pusher,
+)
+
 
 from tfx.v1.extensions.google_cloud_ai_platform import Trainer as VertexTrainer 
 from tfx.v1.extensions.google_cloud_ai_platform import Pusher as VertexPrediction 
+
 from tfx.orchestration import pipeline, data_types
-from src.tfx_pipelines import config
+from src.tfx_pipelines import config, components
 from src.common import features, datasource_utils
-from src.tfx_pipelines import components 
+
+import ml_metadata as mlmd
+from ml_metadata.proto import metadata_store_pb2
 
 RAW_SCHEMA_DIR = "src/tfx_model_training/raw_schema"
 TRANSFORM_MODULE_FILE = "src/preprocessing/transformations.py"
@@ -75,6 +113,7 @@ def _create_pipeline(
     num_epochs: data_types.RuntimeParameter,
     batch_size: data_types.RuntimeParameter,
     learning_rate: data_types.RuntimeParameter,
+    metadata_connection_config: metadata_store_pb2.ConnectionConfig = None,
 )-> tfx.dsl.Pipeline:
 
     # Hyperparameter generation.
@@ -83,12 +122,16 @@ def _create_pipeline(
         batch_size=batch_size,
         learning_rate=learning_rate,
     ).with_id("HyperparamsGen")
+    
+    beam_pipeline_args = config.BEAM_DIRECT_PIPELINE_ARGS
+    if config.BEAM_RUNNER == "DataflowRunner":
+        beam_pipeline_args = config.BEAM_DATAFLOW_PIPELINE_ARGS
 
     # Get train source query.
     train_sql_query = datasource_utils.get_training_source_query(
-        config.PROJECT,
-        config.REGION,
-        config.DATASET_DISPLAY_NAME,
+        project=config.PROJECT,
+        region=config.REGION,
+        dataset_display_name=config.DATASET_DISPLAY_NAME,
         ml_use="UNASSIGNED",
         limit=int(config.TRAIN_LIMIT),
     )
@@ -112,7 +155,7 @@ def _create_pipeline(
         query=train_sql_query,
         output_config=train_output_config,
         custom_config=json.dumps({})
-    ).with_id("TrainDataGen")
+    ).with_beam_pipeline_args(beam_pipeline_args).with_id("TrainDataGen")
 
     # Get test source query.
     test_sql_query = datasource_utils.get_training_source_query(
@@ -136,7 +179,7 @@ def _create_pipeline(
         query=test_sql_query,
         output_config=test_output_config,
         custom_config=json.dumps({})
-    ).with_id("TestDataGen")
+    ).with_beam_pipeline_args(beam_pipeline_args).with_id("TestDataGen")
 
     # Schema importer.
     schema_importer = Importer(
@@ -258,15 +301,15 @@ def _create_pipeline(
         schema=schema_gen.outputs['schema'],
     ).with_id("ModelEvaluator")
 
-
-    exported_model_location = os.path.join(
-        config.MODEL_REGISTRY_URI, config.MODEL_DISPLAY_NAME
-    )
-    push_destination = pusher_pb2.PushDestination(
-        filesystem=pusher_pb2.PushDestination.Filesystem(
-            base_directory=exported_model_location
-        )
-    )
+    ########################## Use this code to push the model to Model Registery #########
+    #exported_model_location = os.path.join(
+    #    config.MODEL_REGISTRY_URI, config.MODEL_DISPLAY_NAME
+    #)
+    #push_destination = pusher_pb2.PushDestination(
+    #    filesystem=pusher_pb2.PushDestination.Filesystem(
+    #        base_directory=exported_model_location
+    #    )
+    #)
 
     # Push custom model to model registry.
     #pusher = Pusher(
@@ -276,12 +319,12 @@ def _create_pipeline(
     #).with_id("ModelPusher")
     
     # Upload custom trained model to Vertex AI.
-    labels = {
-        "dataset_name": config.DATASET_DISPLAY_NAME,
-        "pipeline_name": config.PIPELINE_NAME,
-        "pipeline_root": pipeline_root
-    }
-    labels = json.dumps(labels)
+    #labels = {
+    #    "dataset_name": config.DATASET_DISPLAY_NAME,
+    #    "pipeline_name": config.PIPELINE_NAME,
+    #    "pipeline_root": pipeline_root
+    #}
+    #labels = json.dumps(labels)
     
     #explanation_config = json.dumps(features.generate_explanation_config())
     
@@ -326,15 +369,15 @@ def _create_pipeline(
         f"Pipeline components: {[component.id for component in pipeline_components]}"
     )
 
-    beam_pipeline_args = config.BEAM_DIRECT_PIPELINE_ARGS
-    if config.BEAM_RUNNER == "DataflowRunner":
-        beam_pipeline_args = config.BEAM_DATAFLOW_PIPELINE_ARGS
+
 
     logging.info(f"Beam pipeline args: {beam_pipeline_args}")
 
-    return tfx.dsl.Pipeline(
+    return Pipeline(
         pipeline_name=config.PIPELINE_NAME,
         pipeline_root=pipeline_root,
         components=pipeline_components,
         beam_pipeline_args=beam_pipeline_args,
+        metadata_connection_config=metadata_connection_config,
+        enable_cache=True,
     )

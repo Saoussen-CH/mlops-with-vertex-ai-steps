@@ -15,50 +15,44 @@
 
 
 import os
-from kfp.v2.google.client import AIPlatformClient
+
 from tfx.orchestration import data_types
-from tfx.orchestration.kubeflow.v2 import kubeflow_v2_dag_runner
+from google.cloud import aiplatform
+from google.cloud.aiplatform import pipeline_jobs
 
 
 from src.tfx_pipelines import config, training_pipeline, prediction_pipeline
-from src.model_training import defaults
+from src.tfx_model_training import defaults
 
 
-def compile_training_pipeline(pipeline_definition_file):
+def compile_training_pipeline():
 
-    pipeline_root = os.path.join(
-        config.ARTIFACT_STORE_URI,
-        config.PIPELINE_NAME,
-    )
+    managed_pipeline =  training_pipeline._create_pipeline(
+           pipeline_root=config.PIPELINE_ROOT,
+            num_epochs=data_types.RuntimeParameter(
+                name="num_epochs",
+                default=defaults.NUM_EPOCHS,
+                ptype=int,
+            ),
+            batch_size=data_types.RuntimeParameter(
+                name="batch_size",
+                default=defaults.BATCH_SIZE,
+                ptype=int,
+            ),
+            learning_rate=data_types.RuntimeParameter(
+                name="learning_rate",
+                default=defaults.LEARNING_RATE,
+                ptype=float,
+            ),
 
-    managed_pipeline = training_pipeline.create_pipeline(
-        pipeline_root=pipeline_root,
-        num_epochs=data_types.RuntimeParameter(
-            name="num_epochs",
-            default=defaults.NUM_EPOCHS,
-            ptype=int,
-        ),
-        batch_size=data_types.RuntimeParameter(
-            name="batch_size",
-            default=defaults.BATCH_SIZE,
-            ptype=int,
-        ),
-        learning_rate=data_types.RuntimeParameter(
-            name="learning_rate",
-            default=defaults.LEARNING_RATE,
-            ptype=float,
-        ),
+        )
 
-    )
+    # Path to various pipeline artifact.
+    runner = tfx.orchestration.experimental.KubeflowV2DagRunner(
+        config=tfx.orchestration.experimental.KubeflowV2DagRunnerConfig(default_image=config.TFX_IMAGE_URI),
+        output_filename=config.PIPELINE_DEFINITION_FILE)
 
-    runner = kubeflow_v2_dag_runner.KubeflowV2DagRunner(
-        config=kubeflow_v2_dag_runner.KubeflowV2DagRunnerConfig(
-            default_image=config.TFX_IMAGE_URI
-        ),
-        output_filename=pipeline_definition_file,
-    )
-
-    return runner.run(managed_pipeline, write_out=True)
+    return runner.run(managed_pipeline)
 
 
 def compile_prediction_pipeline(pipeline_definition_file):
@@ -82,7 +76,16 @@ def compile_prediction_pipeline(pipeline_definition_file):
     return runner.run(managed_pipeline, write_out=True)
 
 
-def submit_pipeline(pipeline_definition_file):
-
-    pipeline_client = AIPlatformClient(project_id=config.PROJECT, region=config.REGION)
-    pipeline_client.create_run_from_job_spec(pipeline_definition_file)
+def submit_pipeline():
+    
+    aiplatform.init(project=PROJECT, location=REGION)
+    
+    # Create a job to submit the pipeline
+    job = pipeline_jobs.PipelineJob(template_path=config.PIPELINE_DEFINITION_FILE,
+                                    display_name=config.PIPELINE_NAME,
+                                    parameter_values={
+                                        'learning_rate': 0.003,
+                                        'batch_size': 512,
+                                        'num_epochs': 30,
+                                    })
+    job.submit()
