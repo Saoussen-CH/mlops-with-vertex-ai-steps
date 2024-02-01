@@ -31,7 +31,7 @@ steps:
 - name: '$_CICD_IMAGE_URI'
   entrypoint: 'pytest'
   args: ['src/tests/datasource_utils_tests.py', '-s']
-  dir: 'mlops-with-vertex-ai'
+  dir: 'mlops-with-vertex-ai-steps'
   env: 
   - 'PROJECT=$_PROJECT'  
   - 'BQ_LOCATION=$_BQ_LOCATION'
@@ -45,17 +45,17 @@ steps:
 - name: '$_CICD_IMAGE_URI'
   entrypoint: 'pytest'
   args: ['src/tests/model_tests.py', '-s']
-  dir: 'mlops-with-vertex-ai'
+  dir: 'mlops-with-vertex-ai-steps'
   id: 'Unit Test Model'
   waitFor: ['Clone Repository']
-  timeout: 1800s
+  timeout: 7200s
 
 
 # Test e2e pipeline using local runner.
 - name: '$_CICD_IMAGE_URI'
   entrypoint: 'pytest'
   args: ['src/tests/pipeline_deployment_tests.py::test_e2e_pipeline', '-s']
-  dir: 'mlops-with-vertex-ai'
+  dir: 'mlops-with-vertex-ai-steps'
   env: 
   - 'PROJECT=$_PROJECT'  
   - 'REGION=$_REGION'
@@ -64,17 +64,18 @@ steps:
   - 'GCS_LOCATION=$_TEST_GCS_LOCATION'
   - 'TRAIN_LIMIT=$_CI_TRAIN_LIMIT'
   - 'TEST_LIMIT=$_CI_TEST_LIMIT'  
-  - 'UPLOAD_MODEL=$_CI_UPLOAD_MODEL'
   - 'ACCURACY_THRESHOLD=$_CI_ACCURACY_THRESHOLD'
+  - 'MODEL_DISPLAY_NAME=$_MODEL_DISPLAY_NAME'
+  - 'ENDPOINT_NAME=$_ENDPOINT_NAME_TEST'
   id: 'Local Test E2E Pipeline'
   waitFor: ['Unit Test Datasource Utils', 'Unit Test Model']
-  timeout: 1800s
+  timeout: 7200s
 
 
 # Build the image that encapsulates the pipeline.
 - name: 'gcr.io/cloud-builders/docker'
   args: ['build', '-t', '$_TFX_IMAGE_URI', '.']
-  dir: 'mlops-with-vertex-ai'
+  dir: 'mlops-with-vertex-ai-steps'
   id: 'Build TFX Image'
   waitFor: ['Local Test E2E Pipeline']
   
@@ -84,29 +85,50 @@ steps:
   entrypoint: 'python'
   args: ['build/utils.py',
           '--mode', 'compile-pipeline',
-          '--pipeline-name', '$_PIPELINE_NAME'
           ]
-  dir: 'mlops-with-vertex-ai'
+  dir: 'mlops-with-vertex-ai-steps'
   env: 
   - 'PROJECT=$_PROJECT'  
   - 'REGION=$_REGION'
   - 'MODEL_DISPLAY_NAME=$_MODEL_DISPLAY_NAME'
-  - 'DATASET_DISPLAY_NAME=$_DATASET_DISPLAY_NAME'  
+  - 'DATASET_DISPLAY_NAME=$_DATASET_DISPLAY_NAME'
+  - 'TRAIN_LIMIT=$_CI_TRAIN_LIMIT'
+  - 'TEST_LIMIT=$_CI_TEST_LIMIT'  
   - 'GCS_LOCATION=$_GCS_LOCATION' 
   - 'TFX_IMAGE_URI=$_TFX_IMAGE_URI' 
   - 'BEAM_RUNNER=$_BEAM_RUNNER'
   - 'TRAINING_RUNNER=$_TRAINING_RUNNER'
+  - 'ENDPOINT_NAME=$_ENDPOINT_NAME_PROD'
   id: 'Compile Pipeline'
-  waitFor: ['Local Test E2E Pipeline']
-  
-  
-# Upload compiled pipeline to GCS.
-- name: 'gcr.io/cloud-builders/gsutil'
-  args: ['cp', '$_PIPELINE_NAME.json', '$_PIPELINES_STORE']
-  dir: 'mlops-with-vertex-ai'
-  id:  'Upload Pipeline to GCS'
-  waitFor: ['Compile Pipeline']
-  
+  waitFor: ['Local Test E2E Pipeline', 'Build TFX Image']
 
 # Push TFX Image to Container Registy.
 images: ['$_TFX_IMAGE_URI']
+
+# run the pipeline.
+- name: '$_CICD_IMAGE_URI'
+  entrypoint: 'python'
+  args: ['build/utils.py',
+          '--mode', 'run-pipeline',
+          ]
+  dir: 'mlops-with-vertex-ai-steps'
+  env: 
+    - 'PROJECT=$_PROJECT'  
+    - 'REGION=$_REGION'
+    - 'MODEL_DISPLAY_NAME=$_MODEL_DISPLAY_NAME'
+  id: 'Run Pipeline'
+  waitFor: ['Compile Pipeline']
+  
+# Test deployed model endpoint.
+- name: '$_CICD_IMAGE_URI'
+  entrypoint: 'pytest'
+  args: ['src/tests/model_predition_tests.py::test_model_endpoint']
+  dir: 'mlops-with-vertex-ai-steps'
+  env: 
+  - 'PROJECT=$_PROJECT'  
+  - 'REGION=$_REGION'
+  - 'MODEL_DISPLAY_NAME=$_MODEL_DISPLAY_NAME'
+  - 'ENDPOINT_NAME=$_ENDPOINT_NAME_PROD'
+  id: 'Test Model Endpoint'
+  waitFor: ['Run Pipeline']
+

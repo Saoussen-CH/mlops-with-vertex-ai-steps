@@ -33,7 +33,7 @@ MODEL_DISPLAY_NAME = os.getenv(
     "MODEL_DISPLAY_NAME", f"{DATASET_DISPLAY_NAME}-classifier"
 )
 
-PIPELINE_NAME = os.getenv("PIPELINE_NAME", f"{MODEL_DISPLAY_NAME}-train-pipeline")
+PIPELINE_NAME = os.getenv("PIPELINE_NAME", f"{MODEL_DISPLAY_NAME}-train-pipeline-")
 
 PIPELINE_ROOT = os.path.join(
         ARTIFACT_STORE_URI,
@@ -83,7 +83,7 @@ BEAM_DATAFLOW_PIPELINE_ARGS = [
     f"--sdk_container_image={TFX_IMAGE_URI}",
 ]
 
-TRAINING_RUNNER = os.getenv("TRAINING_RUNNER", "vertex")
+TRAINING_RUNNER = os.getenv("TRAINING_RUNNER", "local")
 
 VERTEX_TRAINING_ARGS = {
     'project': PROJECT,

@@ -71,101 +71,18 @@ def get_args():
     return parser.parse_args()
 
 
-def create_endpoint(project, region, endpoint_display_name):
-    logging.info(f"Creating endpoint {endpoint_display_name}")
-    vertex_ai.init(
-        project=project,
-        location=region
-    )
-    
-    endpoints = vertex_ai.Endpoint.list(
-        filter=f'display_name={endpoint_display_name}', 
-        order_by="update_time")
-    
-    if len(endpoints) > 0:
-        logging.info(f"Endpoint {endpoint_display_name} already exists.")
-        endpoint = endpoints[-1]
-    else:
-        endpoint = vertex_ai.Endpoint.create(endpoint_display_name)
-    logging.info(f"Endpoint is ready.")
-    logging.info(endpoint.gca_resource)
-    return endpoint
-
-
-def deploy_model(project, region, endpoint_display_name, model_display_name, serving_resources_spec):
-    logging.info(f"Deploying model {model_display_name} to endpoint {endpoint_display_name}")
-    vertex_ai.init(
-        project=project,
-        location=region
-    )
-    
-    model = vertex_ai.Model.list(
-        filter=f'display_name={model_display_name}',
-        order_by="update_time"
-    )[-1]
-    
-    endpoint = vertex_ai.Endpoint.list(
-        filter=f'display_name={endpoint_display_name}',
-        order_by="update_time"
-    )[-1]
-
-    deployed_model = endpoint.deploy(model=model, **serving_resources_spec)
-    logging.info(f"Model is deployed.")
-    logging.info(deployed_model)
-    return deployed_model
-
 
 def compile_pipeline(pipeline_name):
     from src.tfx_pipelines import runner
-    pipeline_definition_file = f"{pipeline_name}.json"
-    pipeline_definition = runner.compile_training_pipeline(pipeline_definition_file)
-    return pipeline_definition
+    return runner.compile_training_pipeline()
 
     
 
 def main():
     args = get_args()
     
-    if args.mode == 'create-endpoint':
-        if not args.project:
-            raise ValueError("project must be supplied.")
-        if not args.region:
-            raise ValueError("region must be supplied.")
-        if not args.endpoint_display_name:
-            raise ValueError("endpoint_display_name must be supplied.")
-            
-        result = create_endpoint(
-            args.project, 
-            args.region, 
-            args.endpoint_display_name
-        )
-        
-    elif args.mode == 'deploy-model':
-        if not args.project:
-            raise ValueError("project must be supplied.")
-        if not args.region:
-            raise ValueError("region must be supplied.")
-        if not args.endpoint_display_name:
-            raise ValueError("endpoint-display-name must be supplied.")
-        if not args.model_display_name:
-            raise ValueError("model-display-name must be supplied.")
-            
-        with open(SERVING_SPEC_FILEPATH) as json_file:
-            serving_resources_spec = json.load(json_file)
-        logging.info(f"serving resources: {serving_resources_spec}")
-        result = deploy_model(
-            args.project, 
-            args.region, 
-            args.endpoint_display_name, 
-            args.model_display_name,
-            serving_resources_spec
-        )
-        
-    elif args.mode == 'compile-pipeline':
-        if not args.pipeline_name:
-            raise ValueError("pipeline-name must be supplied.")
-            
-        result = compile_pipeline(args.pipeline_name)
+    if args.mode == 'compile-pipeline':
+        result = compile_pipeline()
 
     else:
         raise ValueError(f"Invalid mode {args.mode}.")

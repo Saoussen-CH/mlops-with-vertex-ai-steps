@@ -15,7 +15,7 @@
 
 
 import os
-
+from tfx import v1 as tfx
 from tfx.orchestration import data_types
 from google.cloud import aiplatform
 from google.cloud.aiplatform import pipeline_jobs
@@ -55,30 +55,9 @@ def compile_training_pipeline():
     return runner.run(managed_pipeline)
 
 
-def compile_prediction_pipeline(pipeline_definition_file):
-
-    pipeline_root = os.path.join(
-        config.ARTIFACT_STORE_URI,
-        config.PIPELINE_NAME,
-    )
-
-    managed_pipeline = prediction_pipeline.create_pipeline(
-        pipeline_root=pipeline_root,
-    )
-
-    runner = kubeflow_v2_dag_runner.KubeflowV2DagRunner(
-        config=kubeflow_v2_dag_runner.KubeflowV2DagRunnerConfig(
-            default_image=config.TFX_IMAGE_URI
-        ),
-        output_filename=pipeline_definition_file,
-    )
-
-    return runner.run(managed_pipeline, write_out=True)
-
-
 def submit_pipeline():
     
-    aiplatform.init(project=PROJECT, location=REGION)
+    aiplatform.init(project=config.PROJECT, location=config.REGION)
     
     # Create a job to submit the pipeline
     job = pipeline_jobs.PipelineJob(template_path=config.PIPELINE_DEFINITION_FILE,
