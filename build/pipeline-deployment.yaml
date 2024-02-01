@@ -69,7 +69,7 @@ steps:
   - 'ENDPOINT_NAME=$_ENDPOINT_NAME_TEST'
   id: 'Local Test E2E Pipeline'
   waitFor: ['Unit Test Datasource Utils', 'Unit Test Model']
-  timeout: 7200s
+
 
 
 # Build the image that encapsulates the pipeline.
@@ -134,3 +134,8 @@ steps:
 
 # Push TFX Image to Container Registy.
 images: ['$_TFX_IMAGE_URI']
+
+logsBucket: 'gs://stellar-orb-408015/chicago-taxi-tips/buildlogd'
+serviceAccount: 'projects/stellar-orb-408015/serviceAccounts/pipelines-sa@stellar-orb-408015.iam.gserviceaccount.com'
+options:
+  logging: GCS_ONLY

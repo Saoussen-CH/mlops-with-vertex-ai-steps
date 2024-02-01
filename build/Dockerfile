@@ -7,3 +7,4 @@ COPY requirements.txt requirements.txt
 
 RUN sed -i 's/python3/python/g' /usr/bin/pip
 RUN pip install -r requirements.txt
+RUN pip install typing_extensions==4.7.1

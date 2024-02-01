@@ -21,7 +21,7 @@ import logging
 import json
 
 from google.cloud import aiplatform as vertex_ai
-
+from src.tfx_pipelines import runner
 
 SCRIPT_DIR = os.path.dirname(
     os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__)))
@@ -72,18 +72,20 @@ def get_args():
 
 
 
-def compile_pipeline(pipeline_name):
-    from src.tfx_pipelines import runner
+def compile_pipeline():
     return runner.compile_training_pipeline()
 
-    
+def run_pipeline():
+    return runner.submit_pipeline()
+
 
 def main():
     args = get_args()
     
     if args.mode == 'compile-pipeline':
         result = compile_pipeline()
-
+    elif args.mode == 'run-pipeline':
+        result = run_pipeline()
     else:
         raise ValueError(f"Invalid mode {args.mode}.")
         
