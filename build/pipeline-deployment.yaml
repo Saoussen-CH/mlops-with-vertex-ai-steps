@@ -99,11 +99,10 @@ steps:
   - 'BEAM_RUNNER=$_BEAM_RUNNER'
   - 'TRAINING_RUNNER=$_TRAINING_RUNNER'
   - 'ENDPOINT_NAME=$_ENDPOINT_NAME_PROD'
+  - 'PIPELINE_NAME=$_PIPELINE_NAME'
   id: 'Compile Pipeline'
   waitFor: ['Local Test E2E Pipeline', 'Build TFX Image']
 
-# Push TFX Image to Container Registy.
-images: ['$_TFX_IMAGE_URI']
 
 # run the pipeline.
 - name: '$_CICD_IMAGE_URI'
@@ -116,6 +115,7 @@ images: ['$_TFX_IMAGE_URI']
     - 'PROJECT=$_PROJECT'  
     - 'REGION=$_REGION'
     - 'MODEL_DISPLAY_NAME=$_MODEL_DISPLAY_NAME'
+    - 'PIPELINE_NAME=$_PIPELINE_NAME'
   id: 'Run Pipeline'
   waitFor: ['Compile Pipeline']
   
@@ -132,3 +132,5 @@ images: ['$_TFX_IMAGE_URI']
   id: 'Test Model Endpoint'
   waitFor: ['Run Pipeline']
 
+# Push TFX Image to Container Registy.
+images: ['$_TFX_IMAGE_URI']
