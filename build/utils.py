@@ -21,7 +21,7 @@ import logging
 import json
 
 from google.cloud import aiplatform as vertex_ai
-from src.tfx_pipelines import runner
+
 
 SCRIPT_DIR = os.path.dirname(
     os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__)))
@@ -63,19 +63,17 @@ def get_args():
         type=str,
     )
     
-    parser.add_argument(
-        '--pipelines-store', 
-        type=str,
-    )
 
     return parser.parse_args()
 
 
 
 def compile_pipeline():
+    from src.tfx_pipelines import runner
     return runner.compile_training_pipeline()
 
 def run_pipeline():
+    from src.tfx_pipelines import runner
     return runner.submit_pipeline()
 
 
