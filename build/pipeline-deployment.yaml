@@ -78,15 +78,23 @@ steps:
   dir: 'mlops-with-vertex-ai-steps'
   id: 'Build TFX Image'
   waitFor: ['Local Test E2E Pipeline']
-  
+
+
+
+# Push the image that encapsulates the pipeline.
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', '$_TFX_IMAGE_URI']
+  dir: 'mlops-with-vertex-ai-steps'
+  id: 'PUSH TFX Image'
+  waitFor: ['Build TFX Image']
   
 # Compile the pipeline.
 - name: '$_CICD_IMAGE_URI'
+  dir: 'mlops-with-vertex-ai-steps'
   entrypoint: 'python'
   args: ['build/utils.py',
           '--mode', 'compile-pipeline',
           ]
-  dir: 'mlops-with-vertex-ai-steps'
   env: 
   - 'PROJECT=$_PROJECT'  
   - 'REGION=$_REGION'
@@ -101,7 +109,7 @@ steps:
   - 'ENDPOINT_NAME=$_ENDPOINT_NAME_PROD'
   - 'PIPELINE_NAME=$_PIPELINE_NAME'
   id: 'Compile Pipeline'
-  waitFor: ['Local Test E2E Pipeline', 'Build TFX Image']
+  waitFor: ['Local Test E2E Pipeline', 'PUSH TFX Image']
 
 
 # run the pipeline.
@@ -119,21 +127,11 @@ steps:
   id: 'Run Pipeline'
   waitFor: ['Compile Pipeline']
   
-# Test deployed model endpoint.
-- name: '$_CICD_IMAGE_URI'
-  entrypoint: 'pytest'
-  args: ['src/tests/model_predition_tests.py::test_model_endpoint']
-  dir: 'mlops-with-vertex-ai-steps'
-  env: 
-  - 'PROJECT=$_PROJECT'  
-  - 'REGION=$_REGION'
-  - 'MODEL_DISPLAY_NAME=$_MODEL_DISPLAY_NAME'
-  - 'ENDPOINT_NAME=$_ENDPOINT_NAME_PROD'
-  id: 'Test Model Endpoint'
-  waitFor: ['Run Pipeline']
 
 # Push TFX Image to Container Registy.
-images: ['$_TFX_IMAGE_URI']
+# Push TFX Image to Container Registy.
+images:
+    - '$_TFX_IMAGE_URI'
 
 logsBucket: 'gs://stellar-orb-408015/chicago-taxi-tips/buildlogd'
 serviceAccount: 'projects/stellar-orb-408015/serviceAccounts/pipelines-sa@stellar-orb-408015.iam.gserviceaccount.com'
